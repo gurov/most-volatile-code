@@ -141,6 +141,18 @@
             return el;
         }
 
+        function prepareStats(stats) {
+            return res => {
+                const c = +res.count.trim();
+                const p = c / (maxCount || c);
+                stats.textContent = (p * 100).toFixed(2) + '%';
+                stats.setAttribute('title', `Count of commits: ${c}`);
+                if (!maxCount) {
+                    maxCount = +res.count.trim();
+                }
+            };
+        }
+
         function prepareBar(bar) {
             return log => {
                 const preparedLog = getDateRangeFromLog(log);
@@ -248,16 +260,7 @@
                 const since = document.getElementById('since').value;
                 const until = document.getElementById('until').value;
                 req(`./get-info?path=${path}&root=${repoPath}&since=${since}&until=${until}`)
-                    .then(res => {
-                        const c = +res.count.trim();
-                        const p = c / (maxCount || c);
-                        stats.textContent = (p * 100).toFixed(2) + '%';
-                        stats.setAttribute('title', `Count of commits: ${c}`);
-                        if (!maxCount) {
-                            maxCount = +res.count.trim();
-                        }
-
-                    });
+                    .then(prepareStats(stats));
             };
 
             div.appendChild(button);
