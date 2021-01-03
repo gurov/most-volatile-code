@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="">
+    <meta name="author" content="Pavel Gurov">
+    <title>Most volatile code</title>
+
+    <meta name="theme-color" content="#7952b3">
+
+
+    <style>
+        body {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 13px;
+        }
+
+
+
+        img {
+            margin-bottom: -2px;
+            margin-left: 2px;
+        }
+
+        .bar {
+            /* border-right: 2px solid red; */
+            /* background-color: rgba(0, 0, 0, 0.1); */
+            position: relative;
+            margin-left: 26px;
+            /* border-bottom: 1px solid midnightblue; */
+        }
+
+
+        .container {
+            position: relative;
+            max-width: 1150px;
+            margin: 50 auto;
+        }
+
+        .stats {
+            display: inline-block;
+            margin-right: 5px;
+            min-width: 60px;
+            text-align: right;
+            cursor: pointer;
+            color: midnightblue;
+        }
+
+        .stats:hover {
+            text-decoration: underline;
+            text-decoration-style: dotted;
+        }
+
+        .col {
+            display: inline-block;
+            width: 5px;
+            height: 10px;
+            border-top: 0px solid blue;
+            /* border-top-width: 1px; */
+            margin-right: 1px;
+            vertical-align: top;
+        }
+
+        .item {
+            background-color: rgba(45, 243, 210, 0.05);
+        }
+
+        .item>.item {
+            margin-left: 12px;
+            border-left: 1px solid rgb(45, 243, 210, 1);
+            ;
+            padding-left: 12px;
+        }
+
+        .item>button {
+            width: 25px;
+            padding: 0;
+            text-align: center;
+        }
+    </style>
+
+</head>
+
+<body>
+
+
+    <main class="container" id="container">
+        <h1>Most volatile code</h1>
+        <table style="width: 100%;">
+            <tbody>
+                <tr>
+                    <td style="width: 200px;">
+                        <label for="repo">Abosolute path to repo</label>
+                    </td>
+                    <td>
+                        <input style="width: 100%;" type="text" id="repo" name="repo"
+                            placeholder="/home/username/projects/communism/">
+                    </td>
+                </tr>
+                <tr>
+                    <td>
+                        <label for="since">since</label>
+                        -
+                        <label for="until">until</label>
+                    </td>
+                    <td>
+                        <input type="date" id="since" name="since">
+                        <input type="date" id="until" name="until">
+                        <button onclick="go()">Go</button>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+        <div id="tree"></div>
+
+    </main>
+
+    <script>
+
+        let maxCount = 0;
+        let repoPath = null;
+
+        document.getElementById('repo').value = localStorage.getItem('repoPath') || '';
+
+        function getStandardDeviation(array) {
+            const n = array.length;
+            const mean = array.reduce((a, b) => a + b) / n;
+            return Math.sqrt(array.map(x => Math.pow(x - mean, 2)).reduce((a, b) => a + b) / n);
+        }
+
+        // Helper function to create an element with attributes
+        function tag(name, attrs) {
+            const el = document.createElement(name.toString());
+
+            !!attrs && Object.keys(attrs)
+                .forEach((key) => el.setAttribute(key, attrs[key]));
+
+            return el;
+        }
+        function getYearMonth(logString) {
+            const l = logString.split('-');
+            return `${l[0]}-${l[1]}`;
+        }
+
+        function getDateRangeFromLog(log) {
+            const logs = log.split('\n').reverse();
+
+            if (!logs.length) {
+                return {};
+            }
+
+            const start = getYearMonth(logs[0]);
+            const end = getYearMonth(logs[logs.length - 1]);
+            const startYear = +start.split('-')[0];
+            const endYear = +end.split('-')[0];
+            const dateRange = [];
+
+            [...new Array(endYear - startYear + 1).keys()]
+                .map(i => i + startYear)
+                .forEach(y => {
+                    ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'].forEach(m => {
+                        dateRange.push(`${y}-${m}`);
+                    })
+                });
+            init = dateRange.filter(d => d >= start && d <= end)
+                .reduce((acc, d) => {
+                    acc[d] = [];
+                    return acc;
+                }, {});
+
+            return logs
+                .reduce((sum, logString) => {
+                    const key = getYearMonth(logString);
+                    sum[key] = [...(sum[key] || []), logString];
+                    return sum;
+                }, init)
+
+        }
+
+        function createItem(path, isDir) {
+
+            const div = tag('div', { class: 'item' });
+            const bar = tag('div', { class: 'bar' });
+            const button = tag('button', {});
+            button.textContent = isDir ? '+' : '.';
+            button.onclick = () => {
+
+
+                if (button.textContent === '+') {
+                    button.textContent = '-';
+                    req('./ls?path=' + path)
+                        .then(els => {
+                            els.map(el => createItem(el.name, el.isDir))
+                                .forEach(item => div.appendChild(item))
+                        });
+                } else if (button.textContent === '-') {
+                    button.textContent = '+';
+                    div.querySelectorAll('.item')
+                        .forEach(el => el.remove());
+                }
+
+
+            };
+            const stats = tag('strong', { class: 'stats' });
+            stats.onclick = () => {
+                bar.innerHTML = ' ⌛️ ';
+                const since = document.getElementById('since').value;
+                const until = document.getElementById('until').value;
+                fetch(`./get-log?path=${path}&root=${repoPath}&since=${since}&until=${until}`)
+                    .then(res => res.text())
+                    .then(log => {
+
+                        const preparedLog = getDateRangeFromLog(log);
+                        bar.innerHTML = '';
+                        Object.keys(preparedLog).sort().forEach(d => {
+                            const col = tag('span', { class: 'col' });
+                            const h = preparedLog[d].length / 10;
+                            col.setAttribute('style', `border-top-width: ${h}px`);
+                            col.setAttribute('title', `${d}\nCount of commits: ${preparedLog[d].length}`);
+                            // console.log('preparedLog[d].length', d, preparedLog[d])
+                            bar.appendChild(col);
+                        });
+                        const params = tag('span', { class: 'st-dev' });
+                        const arr = Object.values(preparedLog).map(ar => ar.length);
+                        
+                        console.log('arr', arr);
+                        const sum = arr.reduce((sum, a) => sum + a, 0);
+                        params.innerHTML = `stDev:${getStandardDeviation(arr).toFixed(2)}` + `, mean:${sum/arr.length}, s:${getStandardDeviation(arr)/(sum/arr.length)}`;
+
+
+                        bar.appendChild(params);
+
+                        console.log(preparedLog);
+                    });
+            };
+            const name = tag('span', { class: 'name' });
+            name.textContent = path.split('/').filter(a => a).pop()
+            const img = tag('img', { src: isDir ? './folder.png' : './file.png' });
+            img.onload = () => {
+                stats.textContent = ' ⌛️ ';
+                const since = document.getElementById('since').value;
+                const until = document.getElementById('until').value;
+                req(`./get-info?path=${path}&root=${repoPath}&since=${since}&until=${until}`)
+                    .then(res => {
+                        const c = +res.count.trim();
+                        const p = c / (maxCount || c);
+                        stats.textContent = (p * 100).toFixed(2) + '%';
+                        stats.setAttribute('title', `Count of commits: ${c}`);
+                        if (!maxCount) {
+                            maxCount = +res.count.trim();
+                        }
+
+                    });
+            };
+
+            div.appendChild(button);
+            div.appendChild(img);
+            div.appendChild(stats);
+            div.appendChild(name);
+            div.appendChild(bar);
+            return div;
+        }
+
+        const req = (path) => fetch(path, { cache: "force-cache" })
+            .then(response => response.json());
+
+        function go() {
+            repoPath = document.getElementById('repo').value;
+            maxCount = 0;
+            localStorage.setItem('repoPath', repoPath);
+
+            if (repoPath) {
+                document.getElementById('tree').innerHTML = ''
+                document.getElementById('tree').appendChild(createItem(repoPath, true));
+            }
+
+        }
+
+    </script>
+
+</body>
+
+</html>
