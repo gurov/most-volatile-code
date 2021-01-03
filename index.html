@@ -56,8 +56,9 @@
         .col {
             display: inline-block;
             width: 5px;
-            height: 10px;
+            height: 0px;
             border-top: 0px solid blue;
+            border-bottom: 0px solid red;
             /* border-top-width: 1px; */
             margin-right: 1px;
             vertical-align: top;
@@ -139,6 +140,33 @@
 
             return el;
         }
+
+        function prepareBar(bar) {
+            return log => {
+                const preparedLog = getDateRangeFromLog(log);
+                bar.innerHTML = '';
+                Object.keys(preparedLog).sort().forEach(d => {
+                    const col = tag('span', { class: 'col' });
+                    const h = preparedLog[d].length;
+                    const hBlue = h > 100 ? 100 : h;
+                    const hRed = h > 100 ? 5 * Math.log(h - 100).toFixed(0) : 0;
+                    col.setAttribute('style', `border-top-width: ${hBlue}px; border-bottom-width: ${hRed}px;`);
+                    col.setAttribute('title', `${d}\nCount of commits: ${preparedLog[d].length}`);
+                    bar.appendChild(col);
+                });
+                const params = tag('span', { class: 'st-dev' });
+                const arr = Object.values(preparedLog).map(ar => ar.length);
+
+                const sum = arr.reduce((sum, a) => sum + a, 0);
+                params.innerHTML = `stDev:${getStandardDeviation(arr).toFixed(2)}` + `, mean:${sum / arr.length}, s:${getStandardDeviation(arr) / (sum / arr.length)}`;
+
+
+                bar.appendChild(params);
+
+                console.log(preparedLog);
+            };
+        }
+
         function getYearMonth(logString) {
             const l = logString.split('-');
             return `${l[0]}-${l[1]}`;
@@ -210,30 +238,7 @@
                 const until = document.getElementById('until').value;
                 fetch(`./get-log?path=${path}&root=${repoPath}&since=${since}&until=${until}`)
                     .then(res => res.text())
-                    .then(log => {
-
-                        const preparedLog = getDateRangeFromLog(log);
-                        bar.innerHTML = '';
-                        Object.keys(preparedLog).sort().forEach(d => {
-                            const col = tag('span', { class: 'col' });
-                            const h = preparedLog[d].length / 10;
-                            col.setAttribute('style', `border-top-width: ${h}px`);
-                            col.setAttribute('title', `${d}\nCount of commits: ${preparedLog[d].length}`);
-                            // console.log('preparedLog[d].length', d, preparedLog[d])
-                            bar.appendChild(col);
-                        });
-                        const params = tag('span', { class: 'st-dev' });
-                        const arr = Object.values(preparedLog).map(ar => ar.length);
-                        
-                        console.log('arr', arr);
-                        const sum = arr.reduce((sum, a) => sum + a, 0);
-                        params.innerHTML = `stDev:${getStandardDeviation(arr).toFixed(2)}` + `, mean:${sum/arr.length}, s:${getStandardDeviation(arr)/(sum/arr.length)}`;
-
-
-                        bar.appendChild(params);
-
-                        console.log(preparedLog);
-                    });
+                    .then(prepareBar(bar));
             };
             const name = tag('span', { class: 'name' });
             name.textContent = path.split('/').filter(a => a).pop()
